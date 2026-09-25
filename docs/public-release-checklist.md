@@ -1,0 +1,24 @@
+# Public Release Checklist
+
+- [ ] README says this is a convenience feature, not a hardening tool.
+- [ ] README warns against shared-admin, kiosk, lab, and remote-admin systems.
+- [ ] Documentation contains no local usernames, hostnames, private paths, e-mail addresses, screenshots, or machine-specific logs.
+- [ ] `docs/security-audit.md` is current.
+- [ ] Installer refuses to edit `/etc/pam.d/sudo`.
+- [ ] Installer writes only `/etc/pam.d/sudo_local`.
+- [ ] Installer backs up existing `sudo_local`.
+- [ ] Installer refuses symlinked `sudo_local`.
+- [ ] Installer copies `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so`.
+- [ ] Source-build path downloads a pinned release and verifies SHA-256.
+- [ ] Source-build path stages install output and copies only `pam_reattach.so`.
+- [ ] Installer validates `root:wheel` ownership and non-writable parent directories.
+- [ ] Installer never points PAM at `/opt/homebrew` or `Cellar`.
+- [ ] Installer uses `ignore_ssh`.
+- [ ] Installer validates `sudo -v` before exit.
+- [ ] Uninstaller refuses unmanaged files.
+- [ ] Uninstall/reinstall behavior is documented: after uninstall, reinstall must be run from an interactive Terminal or another visible password prompt path.
+- [ ] Audit script passes on a clean installed system.
+- [ ] `./scripts/check.sh` passes.
+- [ ] Manual test: Terminal sudo with Touch ID.
+- [ ] Manual test: tmux sudo with Touch ID.
+- [ ] Manual test: SSH-originated session does not trigger unwanted local Touch ID prompt.
