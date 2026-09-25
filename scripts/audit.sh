@@ -4,6 +4,8 @@ set -u
 SUDO_PAM="/etc/pam.d/sudo"
 SUDO_LOCAL="/etc/pam.d/sudo_local"
 TARGET_MODULE="/usr/local/lib/pam/pam_reattach.so"
+EXPECTED_REATTACH="auth       optional       ${TARGET_MODULE} ignore_ssh"
+EXPECTED_TID="auth       sufficient     pam_tid.so"
 failures=0
 
 pass() {
@@ -57,22 +59,21 @@ else
   fail "$SUDO_PAM does not include sudo_local"
 fi
 
+check_root_safe /etc/pam.d
+check_root_safe "$SUDO_PAM"
 check_root_safe /usr/local
 check_root_safe /usr/local/lib
 check_root_safe /usr/local/lib/pam
 check_root_safe "$TARGET_MODULE"
 check_root_safe "$SUDO_LOCAL"
 
-if grep -Fq "auth       optional       ${TARGET_MODULE} ignore_ssh" "$SUDO_LOCAL" 2>/dev/null; then
-  pass "$SUDO_LOCAL has pam_reattach with ignore_ssh"
+active="$(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$SUDO_LOCAL" 2>/dev/null || true)"
+expected="$(printf '%s\n%s' "$EXPECTED_REATTACH" "$EXPECTED_TID")"
+if [ "$active" = "$expected" ]; then
+  pass "$SUDO_LOCAL active rules are exactly pam_reattach (optional, ignore_ssh) then pam_tid (sufficient)"
 else
-  fail "$SUDO_LOCAL missing expected pam_reattach line"
-fi
-
-if grep -Fq "auth       sufficient     pam_tid.so" "$SUDO_LOCAL" 2>/dev/null; then
-  pass "$SUDO_LOCAL has pam_tid as sufficient"
-else
-  fail "$SUDO_LOCAL missing expected pam_tid line"
+  fail "$SUDO_LOCAL active rules differ from the expected two lines:"
+  printf '%s\n' "$active" | sed 's/^/  /' >&2
 fi
 
 if grep -Eq '/opt/homebrew|/Cellar/' "$SUDO_LOCAL" 2>/dev/null; then
@@ -89,6 +90,8 @@ if command -v otool >/dev/null 2>&1 && [ -e "$TARGET_MODULE" ]; then
   else
     fail "$TARGET_MODULE has non-system library dependencies: $unsafe"
   fi
+else
+  echo "SKIP: otool not available or $TARGET_MODULE missing; library dependency check not run"
 fi
 
 if [ "$failures" -eq 0 ]; then

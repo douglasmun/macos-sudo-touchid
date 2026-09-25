@@ -25,11 +25,13 @@ Do not weaken these without an explicit user request and a fresh security review
 - Preserve password fallback through Apple's normal sudo PAM stack.
 - Source builds must verify the pinned upstream tarball checksum before compiling.
 - Source builds must stage install output and copy only `pam_reattach.so` into the root-owned PAM module path.
+- Check parent directory ownership before the first privileged write, not only afterward.
+- Never remove or rename `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy when a listed module cannot load, even an `optional` one.
 
 ## Scripts
 
-- `scripts/build-pam-reattach.sh`: downloads, verifies, builds, stages, and installs only `pam_reattach.so`.
-- `scripts/install.sh`: installs the managed `sudo_local` configuration and validates sudo.
+- `scripts/build-pam-reattach.sh`: downloads, verifies, patches the upstream `ssh_env_vars` out-of-bounds read, builds, stages, and installs only `pam_reattach.so`.
+- `scripts/install.sh`: installs the managed `sudo_local` configuration, re-authenticates with `sudo -k true`, and rolls back on failure.
 - `scripts/uninstall.sh`: disables this project's managed configuration but does not delete `sudo_local`.
 - `scripts/audit.sh`: audits the live machine state.
 - `scripts/check.sh`: runs shell syntax checks and the live audit.

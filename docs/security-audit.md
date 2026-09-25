@@ -39,14 +39,18 @@ auth       optional       /usr/local/lib/pam/pam_reattach.so ignore_ssh
 auth       sufficient     pam_tid.so
 ```
 
-`pam_reattach` is optional because it should prepare the GUI session for later modules, not authenticate the user by itself. `pam_tid` is sufficient so a successful Touch ID check can satisfy sudo authentication, while failure falls through to the remaining password path.
+`pam_reattach` is optional because it should prepare the GUI session for later modules, not authenticate the user by itself. `optional` only covers runtime failures. Apple's OpenPAM (`openpam_configure.c`) aborts policy loading when any listed module cannot be loaded, so a missing module file makes every sudo authentication fail. `pam_tid` is sufficient so a successful Touch ID check can satisfy sudo authentication, while failure falls through to the remaining password path.
 
 ## Reviewed Edge Cases
 
-- Missing or broken `pam_reattach.so` should not authenticate the user.
+- A `pam_reattach` runtime failure does not authenticate the user; it falls through to `pam_tid` and then the password path.
+- A missing or unloadable `pam_reattach.so` fails closed: sudo cannot authenticate at all. The README documents recovery through the macOS administrator dialog, which does not use the sudo PAM stack.
 - Direct Homebrew/Cellar module loading is rejected by design.
 - Symlinked active PAM config or module paths are rejected by audit/install checks.
-- Group/other-writable active PAM paths are rejected by audit/install checks.
+- Group/other-writable active PAM paths are rejected by audit/install checks. Install and source-build scripts check parent directories before their first privileged write.
+- An existing module at the target path is reused only if it is already `root:wheel` and not group/other writable; it is never re-owned.
+- The audit requires the active `sudo_local` rules to be exactly the two expected lines in order, so extra rules (for example `pam_permit.so`) and commented-out lines fail it.
+- The installer re-authenticates through the new stack with `sudo -k true`, which leaves cached credentials intact, and rolls back `sudo_local` if that fails.
 - Existing unmanaged active `sudo_local` rules are not overwritten silently.
 - Uninstall does not delete `sudo_local`; it replaces it with a safe comment-only file.
 - Reinstall after uninstall is documented as requiring an interactive Terminal or another visible password prompt path.
@@ -79,6 +83,10 @@ The source-build path should also be tested before tagging a release:
 - Biometric prompts can create prompt-confusion risk if users approve prompts without understanding which command triggered them.
 - This is not recommended for shared-admin, kiosk, lab, remote-admin, or high-assurance environments.
 - The source build pins and verifies an upstream release tarball, but users still trust the upstream project and local compiler toolchain.
+- The module is copied from a user-writable location (Homebrew prefix or a user-owned build directory). Code running as the user at install time could tamper with it before the copy.
+- Upstream `pam_reattach` v1.3 reads past the end of its `ssh_env_vars` array in the `ignore_ssh` check. The source build patches this; the Homebrew bottle does not.
+- `ignore_ssh` relies on SSH environment variables. Existing panes in a locally started tmux or screen session that is later attached over SSH do not have them, so sudo there can show a Touch ID prompt on the local display.
+- Touch ID for sudo does not defend against code already running as the user, which can wait for a cached sudo timestamp either way.
 
 ## Release Recommendation
 

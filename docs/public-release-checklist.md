@@ -14,8 +14,13 @@
 - [ ] Installer validates `root:wheel` ownership and non-writable parent directories.
 - [ ] Installer never points PAM at `/opt/homebrew` or `Cellar`.
 - [ ] Installer uses `ignore_ssh`.
-- [ ] Installer validates `sudo -v` before exit.
+- [ ] Installer and build script check parent directory ownership before the first privileged write.
+- [ ] Installer re-authenticates with `sudo -k true` and rolls back `sudo_local` on failure.
+- [ ] Source build applies and verifies the `ssh_env_vars` bounds patch.
+- [ ] README documents recovery if the PAM module goes missing.
 - [ ] Uninstaller refuses unmanaged files.
+- [ ] Audit fails on extra, reordered, or commented-out `sudo_local` rules.
+- [ ] Git commit author e-mail is one you are willing to publish (for example a GitHub noreply address).
 - [ ] Uninstall/reinstall behavior is documented: after uninstall, reinstall must be run from an interactive Terminal or another visible password prompt path.
 - [ ] Audit script passes on a clean installed system.
 - [ ] `./scripts/check.sh` passes.

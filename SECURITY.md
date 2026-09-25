@@ -18,12 +18,18 @@ The installer and documentation must preserve these properties:
 - Stage source builds into a temporary directory and copy only `pam_reattach.so` into the root-owned PAM module path.
 - Ensure `/usr/local`, `/usr/local/lib`, `/usr/local/lib/pam`, and the copied module are root-owned and not group/other writable.
 - Ensure `/etc/pam.d/sudo_local` is root-owned and not group/other writable.
+- Check parent directory ownership before any privileged write, not only after.
+- Never remove `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if a listed module cannot be loaded, whatever its control flag.
 - Use `ignore_ssh` unless remote biometric prompts are an explicit, documented non-default mode.
 - Keep `pam_reattach` as `optional`.
 - Keep `pam_tid` as `sufficient`.
 - Preserve password fallback through the rest of Apple's sudo PAM stack.
 
-## Reporting Issues
+## Reporting Vulnerabilities
+
+Report suspected vulnerabilities privately through GitHub's "Report a vulnerability" button on the Security tab. Do not open a public issue for them.
+
+## Reporting Other Issues
 
 Open a GitHub issue with:
 

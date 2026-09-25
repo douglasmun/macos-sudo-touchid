@@ -34,6 +34,7 @@ Avoid this on shared-admin, kiosk, lab, remote-admin, or high-assurance systems 
 - macOS with Touch ID configured.
 - A user account that is already allowed to use `sudo`.
 - Apple's `/etc/pam.d/sudo` must include `sudo_local`.
+- `/usr/local` and `/usr/local/lib` must be `root:wheel` and not group/other writable. This is the default on Apple Silicon. On Intel Macs, Homebrew usually owns `/usr/local/lib`, and the scripts refuse to run.
 - Either Homebrew `pam-reattach`, or CMake plus Apple's command line tools to build `pam_reattach` from source.
 
 ## Install
@@ -65,13 +66,28 @@ Keep the current Terminal window open while testing. The installer backs up any 
 The installer:
 
 1. Verifies that `/etc/pam.d/sudo` includes `sudo_local`.
-2. Refuses to overwrite unmanaged active PAM rules in `/etc/pam.d/sudo_local`.
-3. Copies `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so` if needed.
-4. Enforces `root:wheel` ownership and non-writable permissions on the active PAM module path.
-5. Writes a managed `/etc/pam.d/sudo_local`.
-6. Validates `sudo` before exiting.
+2. Verifies that `/etc/pam.d`, `/usr/local`, `/usr/local/lib`, and any existing `/usr/local/lib/pam` are `root:wheel`, not symlinks, and not group/other writable, before any privileged write.
+3. Refuses to overwrite unmanaged active PAM rules in `/etc/pam.d/sudo_local`.
+4. Copies `pam_reattach.so` to `/usr/local/lib/pam/pam_reattach.so` if it is not already there. An existing file at that path is reused only if it is already root-owned and safe.
+5. Writes a managed `/etc/pam.d/sudo_local`, backing up any existing file next to it.
+6. Re-authenticates once through the new PAM stack with `sudo -k true`. If that fails, it restores the previous `sudo_local` using the still-cached sudo credentials.
 
 It does not edit `/etc/pam.d/sudo`.
+
+## Updating pam_reattach
+
+The installer reuses the module already at `/usr/local/lib/pam/pam_reattach.so`, so upgrading Homebrew's `pam-reattach` does not change what PAM loads. To pick up a new build, run `./scripts/build-pam-reattach.sh` again, or replace the module from Homebrew:
+
+```sh
+sudo /usr/bin/install -o root -g wheel -m 0444 "$(brew --prefix pam-reattach)/lib/pam/pam_reattach.so" /usr/local/lib/pam/pam_reattach.so
+./scripts/audit.sh
+```
+
+Uninstalling Homebrew's `pam-reattach` does not affect sudo, because PAM loads the root-owned copy.
+
+## Upstream Patch
+
+`pam_reattach` v1.3 has an out-of-bounds read in its `ignore_ssh` check: it loops `sizeof(ssh_env_vars)` times (the array's size in bytes) over a three-element array. `scripts/build-pam-reattach.sh` patches this after verifying the tarball checksum. The Homebrew bottle is built from unpatched upstream source. Prefer the source build if this matters to you.
 
 ## Audit
 
@@ -107,7 +123,19 @@ cd /path/to/macos-sudo-touchid
 ./scripts/check.sh
 ```
 
-This runs shell syntax checks and the live audit. It does not run uninstall/reinstall, because uninstall intentionally disables Touch ID and changes how future `sudo` prompts behave.
+This runs shell syntax checks and the live audit. The audit reads the real `/etc/pam.d` and `/usr/local/lib/pam`, so it fails on a machine where this configuration is not installed. It does not run uninstall/reinstall, because uninstall intentionally disables Touch ID and changes how future `sudo` prompts behave.
+
+## Recovery
+
+Do not delete `/usr/local/lib/pam/pam_reattach.so` while `sudo_local` references it. OpenPAM rejects the whole sudo policy if it cannot load a listed module, even an `optional` one. Every `sudo` call then fails, including password authentication.
+
+If that happens, restore Apple's comment-only template through the macOS administrator dialog. It uses Authorization Services, not the sudo PAM stack:
+
+```sh
+osascript -e 'do shell script "/bin/cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local" with administrator privileges'
+```
+
+Then run `./scripts/install.sh` again if you want Touch ID back.
 
 ## Security Review
 
@@ -120,4 +148,6 @@ auth       optional       /usr/local/lib/pam/pam_reattach.so ignore_ssh
 auth       sufficient     pam_tid.so
 ```
 
-`pam_reattach` is marked `optional` so a missing or broken module does not authenticate anyone. `pam_tid` is marked `sufficient` so successful Touch ID can satisfy sudo authentication, while failure falls through to the normal password path.
+`pam_reattach` is marked `optional` because it only prepares the GUI session for `pam_tid`. It never authenticates anyone, and a runtime failure falls through. The module file must exist, though; see [Recovery](#recovery). `pam_tid` is marked `sufficient` so successful Touch ID can satisfy sudo authentication, while failure falls through to the normal password path.
+
+`ignore_ssh` skips reattaching when `SSH_CLIENT`, `SSH_CONNECTION`, or `SSH_TTY` is set in the sudo process's environment. A tmux or screen session started locally and later attached over SSH keeps its original environment in existing panes, because tmux's `update-environment` only affects panes created after the attach. sudo from such a pane can still show a Touch ID prompt on the Mac's local display, which only someone at the Mac can approve.
